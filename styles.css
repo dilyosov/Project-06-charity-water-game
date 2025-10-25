@@ -1,0 +1,623 @@
+/* Charity: water Brand Colors
+
+Primary Colors:
+- Yellow:     #FFC907
+- Blue:       #2E9DF7
+
+Secondary Colors:
+- Light Blue: #8BD1CB
+- Green:      #4FCB53
+- Orange:     #FF902A
+- Red:        #F5402C
+- Dark Green: #159A48
+- Pink:       #F16061
+
+*/
+
+.hidden { display: none !important; }
+
+/* simple logo placeholder styling */
+#logo-placeholder {
+	font-weight: 700;
+	font-size: 18px;
+	color: #2E9DF7;
+	padding: 8px 12px;
+	border-radius: 6px;
+	background: rgba(46,157,247,0.08);
+	display: inline-block;
+}
+
+/* ensure the game area prevents touch scrolling when active (kept simple) */
+#game-area { touch-action: none; }
+
+/* Layout for screens */
+body {
+	margin: 0;
+	font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+	background: #f6fbff;
+	color: #0b2948;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 100vh;
+	padding: clamp(0.75rem, 2vw, 2rem);
+}
+
+/* Ensure the root fills the viewport and prevent the page itself from scrolling.
+   Any necessary scrolling will happen inside .screen or #game-area instead. */
+html, body {
+	height: 100%;
+	overflow: hidden; /* prevents page scrollbar */
+}
+
+/* Make the app containers aware of viewport height and allow internal scrolling
+   when content exceeds the available space (prevents the page from growing). */
+.screen, #game-area {
+	/* keep centered layout but never exceed viewport height */
+	max-height: 100vh;
+	overflow: auto;            /* internal scrolling only */
+	-webkit-overflow-scrolling: touch; /* smooth scrolling on iOS if needed */
+}
+
+/* Small tweak: if the modal is open (Bootstrap), prevent body from gaining a scrollbar.
+   Bootstrap adds .modal-open to body; ensure it doesn't re-enable page scrolling. */
+body.modal-open {
+	overflow: hidden !important;
+}
+
+/* Make start / game / game-over screens share a responsive centered container */
+.screen {
+	/* Keep these full-bleed vertically but center content horizontally */
+	width: 100%;
+	max-width: var(--max-width);
+	margin-inline: auto;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+	padding: 24px;
+	text-align: center;
+}
+
+/* Game area becomes the main responsive app container */
+#game-area {
+	/* show/hide handled by .hidden */
+	position: relative;          /* allows absolutely-positioned bg/ground to be relative here */
+	width: 100%;
+	max-width: var(--max-width);
+	margin-inline: auto;
+	display: flex;
+	flex-direction: column;      /* HUD above canvas above controls */
+	align-items: center;
+	gap: var(--gap);
+	padding-bottom: calc(var(--controls-height) + 1.25rem); /* ensure controls don't overlap canvas */
+	box-sizing: border-box;
+  text-align: center;
+}
+
+/* HUD: flexible row that wraps on narrow screens */
+#hud {
+	/* keep above canvas */
+	position: relative;
+	z-index: 6;
+	width: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+	padding: 0.5rem 0.75rem;
+	font-size: var(--ui-font);
+	/* improved readability: semi-transparent panel + frosted blur */
+	background: rgba(246,251,255,0.8);
+	backdrop-filter: blur(4px);
+	-webkit-backdrop-filter: blur(4px);
+	/* allow HUD items to wrap onto new lines on narrow screens */
+	flex-wrap: wrap;
+}
+
+/* allow HUD items to wrap into multiple lines on small screens */
+.hud-left, .hud-center, .hud-right {
+	display: flex;
+	align-items: center;
+	gap: 0rem;
+	flex-wrap: nowrap;
+}
+.hud-left { flex: 0 1 auto; }
+.hud-center { flex: 1 1 auto; justify-content: center; }
+.hud-right { flex: 0 1 auto; justify-content: flex-end; }
+
+/* mini logo scales with viewport but never too large */
+#mini-logo {
+	height: clamp(20px, 4.6vw, 36px);
+	width: auto;
+}
+
+/* Canvas wrapper: keeps aspect and scales visually.
+   The logical canvas (width/height attributes) remain 820x360 for game logic. */
+#canvas-wrap {
+	width: 100%;
+	max-width: var(--max-width);
+	aspect-ratio: 820 / 360;
+	position: relative;
+	overflow: hidden;
+	border-radius: var(--radius);
+	background: linear-gradient(180deg, #eaf8ff, #dff6ff); /* subtle backdrop while canvas loads */
+}
+
+/* Fallback for browsers without aspect-ratio support (keeps same behavior) */
+@supports not (aspect-ratio: 1/1) {
+	#canvas-wrap { height: 0; padding-top: calc(360 / 820 * 100%); }
+	#canvas-wrap > canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+}
+
+/* Canvas scales visually only; logical pixel size is set in JS */
+#game-canvas {
+	display: block;
+	width: 100%;   /* visual scale */
+	height: 100%;  /* fill wrapper */
+	border-radius: var(--radius);
+}
+
+/* Decorative background and ground are positioned relative to the game container */
+#background, #ground {
+	left: 50%;
+	transform: translateX(-50%);
+	max-width: var(--max-width);
+	width: 100%;
+	pointer-events: none;
+}
+
+/* Ground sits above controls area, adjust on larger screens */
+#ground {
+	position: absolute;
+	bottom: calc(var(--controls-height) + 0.75rem);
+	height: clamp(22px, 3.6vh, 32px);
+	z-index: 3;
+}
+
+/* Controls: bottom bar; on small screens it's full-width and centered */
+#controls {
+	position: absolute;
+	bottom: 0.5rem;
+	left: 50%;
+	transform: translateX(-50%);
+	width: min(96%, var(--max-width));
+	height: var(--controls-height);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	padding: 0.4rem;
+	box-sizing: border-box;
+	border-radius: 14px;
+	z-index: 5;
+}
+
+/* TAP instruction & branding scale with clamp for better readability */
+#tap-instruction {
+	font-weight: 700;
+	font-size: clamp(0.95rem, 2.2vw, 1.05rem);
+	padding: 0.5rem 0.9rem;
+	border-radius: 10px;
+	box-shadow: 0 6px 16px rgba(11,41,72,0.06);
+}
+
+/* Buttons use rem and clamp so they are tappable on phones */
+#start-btn, #play-again-btn, #instructions-btn, #pause-btn, #reset-btn {
+	font-size: clamp(0.9rem, 1.8vw, 1rem);
+	padding: clamp(8px, 1.8vw, 12px) clamp(10px, 3vw, 16px);
+	border-radius: 10px;
+}
+
+/* HUD control buttons spacing manageable on narrow screens */
+.hud-right button { margin-left: 0.5rem; }
+
+/* Friendly face container (positioned relative to cloud) */
+.cloud-face {
+	position: absolute;
+	left: 50%;
+	top: 46%;
+	transform: translate(-50%, -50%);
+	width: 44%;          /* scales with cloud width */
+	height: 36%;         /* scales with cloud height */
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	pointer-events: none;
+	z-index: 2;
+}
+
+/* Eyes: white outer and dark pupil via pseudo-element */
+.cloud-face .eye {
+	width: 30%;
+	height: 70%;
+	background: #fff;
+	border-radius: 50%;
+	display: inline-block;
+	position: relative;
+	box-shadow: 0 2px 4px rgba(4,34,60,0.06);
+	border: 2px solid rgba(4,34,60,0.06);
+}
+
+/* pupil inside eye using pseudo-element for neat scaling */
+.cloud-face .eye::after {
+	content: "";
+	position: absolute;
+	left: 45%;
+	top: 45%;
+	width: 36%;
+	height: 36%;
+	background: #062033;
+	border-radius: 50%;
+	transform: translate(-50%, -50%);
+	box-shadow: 0 1px 0 rgba(255,255,255,0.12) inset;
+}
+
+/* Slight horizontal spacing for left/right eyes */
+.cloud-face .eye.left { transform: translateX(-6%); }
+.cloud-face .eye.right { transform: translateX(6%); }
+
+/* Mouth: small rounded smile (use border-radius + border-bottom to simulate curve) */
+.cloud-face .mouth {
+	position: absolute;
+	left: 50%;
+	bottom: -12%;
+	transform: translateX(-50%);
+	width: 42%;
+	height: 22%;
+	border-bottom: 3px solid #062033;
+	border-radius: 0 0 40px 40px;
+	opacity: 0.95;
+}
+
+/* Add a cheerful wink animation occasionally for life */
+@keyframes wink {
+	0%, 100% { transform: translateX(-50%) scaleY(1); }
+	50% { transform: translateX(-50%) scaleY(0.2); }
+}
+
+/* Apply a subtle occasional wink to larger cloud (c2) */
+.cloud.c2 .cloud-face .eye.left { animation: none; }
+@media (prefers-reduced-motion: no-preference) {
+	.cloud.c2 .cloud-face .eye.left::after {
+		/* tiny scale animation on pupil to suggest blink */
+		animation: wink 4.5s ease-in-out infinite;
+		animation-delay: 1s;
+	}
+}
+
+/* Slight adjustments per cloud size to keep face centered */
+.cloud.c1 .cloud-face { width: 46%; top: 48%; }
+.cloud.c2 .cloud-face { width: 42%; top: 44%; }
+.cloud.c3 .cloud-face { width: 48%; top: 50%; }
+
+/* Keep existing cloud size rules but make them slightly puffier */
+.cloud.c1 { width: 160px; height: 54px; top: 28px; left: 40px; }
+.cloud.c1::before { width: 82px; height: 82px; left: -34px; top: -26px; }
+.cloud.c1::after  { width: 90px, height: 90px; right: -40px; top: -30px; }
+
+.cloud.c2 { width: 260px; height: 86px; top: 12px; right: 40px; }
+.cloud.c2::before { width: 120px; height: 120px; left: -42px; top: -40px; }
+.cloud.c2::after  { width: 160px, height: 160px; right: -56px; top: -56px; }
+
+.cloud.c3 { width: 120px; height: 46px; top: 62px; left: 240px; }
+.cloud.c3::before { width: 64px; height: 64px; left: -22px; top: -20px; }
+.cloud.c3::after  { width: 74px, height: 74px; right: -28px; top: -22px; }
+
+/* Add subtle floating animation (keeps existing timing) */
+@keyframes floatCloud {
+	0% { transform: translateY(0); }
+	50% { transform: translateY(-6px); }
+	100% { transform: translateY(0); }
+}
+
+/* small accessibility / focus styles */
+#start-btn, #play-again-btn {
+	border-radius: 8px;
+	padding: 10px 14px;
+	background: linear-gradient(180deg,#2E9DF7,#1c85e8);
+	color: #fff;
+	border: none;
+	box-shadow: 0 6px 14px rgba(46,157,247,0.18);
+}
+
+/* Small animation for jump (visual scaling during jump) - applied in canvas drawing via scale */
+@keyframes pop {
+	0% { transform: translateY(0) scale(1); }
+	50% { transform: translateY(-6px) scale(1.02); }
+	100% { transform: translateY(0) scale(1); }
+}
+
+/* Mobile adjustments */
+@media (max-width: 480px) {
+	#logo-placeholder { font-size: 16px; padding: 6px 8px; }
+	#hud { font-size: 14px; }
+}
+
+/* Responsive behavior: tablet / small desktop */
+@media (max-width: 720px) {
+	/* Slightly reduce HUD spacing */
+	#hud { padding: 0.4rem; gap: 0.5rem; font-size: 0.95rem; }
+	#controls { height: calc(var(--controls-height) - 6px); padding: 0.35rem; }
+	#tap-instruction { font-size: 0.95rem; padding: 0.45rem 0.8rem; }
+}
+
+/* Mobile: stack HUD items, ensure no overlap, enlarge tap targets */
+@media (max-width: 480px) {
+	#hud {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.5rem;
+		padding: 0.5rem;
+	}
+	.hud-center { order: 0; margin: 0 auto; }
+	.hud-left, .hud-right { justify-content: space-between; width: 100%; }
+	#controls {
+		position: fixed; /* keep controls accessible even when canvas scrolls */
+		left: 50%;
+		transform: translateX(-50%);
+		bottom: 8px;
+		width: calc(100% - 16px);
+		max-width: calc(var(--max-width) - 16px);
+		height: 68px;
+		padding: 0.5rem;
+	}
+	#canvas-wrap { aspect-ratio: 820 / 360; border-radius: 10px; }
+	/* increase button hit areas */
+	#instructions-btn, #pause-btn, #reset-btn { padding: 10px 12px; font-size: 0.95rem; }
+	/* ensure start-screen elements are readable */
+	.logo-wrap { gap: 0.6rem; width: 100%; }
+	#logo { width: clamp(100px, 36vw, 160px); }
+}
+
+/* Very small phones — ensure everything fits, reduce some spacing */
+@media (max-width: 360px) {
+	body { padding: 0.5rem; }
+	#controls { height: 64px; bottom: 6px; }
+	#tap-instruction { font-size: 0.9rem; padding: 0.4rem 0.6rem; }
+	#hud { font-size: 0.92rem; padding: 0.4rem; gap: 0.4rem; }
+}
+
+/* Accessibility: larger focus outline for keyboard users */
+:focus {
+	outline: 3px solid rgba(46,157,247,0.22);
+	outline-offset: 2px;
+}
+
+/* Remove the brown ground strip so it doesn't block the game canvas.
+   Keep the element in the DOM (in case you want it back), but hide it visually. */
+#ground {
+	display: none !important;
+}
+
+/* Replace previous simple cloud with layered cloud shapes using pseudo-elements.
+   Each .cloud is the middle puff and ::before / ::after create the left/right puffs.
+   This produces a more natural cloud silhouette. */
+.cloud {
+	position: absolute;
+	width: 180px;
+	height: 56px;
+	pointer-events: none;
+	/* soft center gradient to feel fluffy */
+	background: linear-gradient(180deg, #ffffff 0%, #f3f7fb 60%, #e9f1f9 100%);
+	border-radius: 999px;
+	box-shadow: 0 12px 28px rgba(11,41,72,0.08), inset 0 -6px 12px rgba(0,0,0,0.03);
+	opacity: 0.98;
+	animation: floatCloud 6s ease-in-out infinite;
+	/* slight outline to match cartoon style */
+	border: 2px solid rgba(4,34,60,0.06);
+}
+
+/* left and right puffs remain using pseudo elements but softened */
+.cloud::before,
+.cloud::after {
+	content: "";
+	position: absolute;
+	background: linear-gradient(180deg, #fff 0%, #f3f7fb 70%);
+	border-radius: 999px;
+	box-shadow: 0 10px 20px rgba(11,41,72,0.06);
+}
+
+/* left puff */
+.cloud::before {
+	width: 86px;
+	height: 86px;
+	left: -36px;
+	top: -28px;
+}
+
+/* right puff */
+.cloud::after {
+	width: 110px;
+	height: 110px;
+	right: -46px;
+	top: -36px;
+}
+
+/* Slight adjustments per cloud size to keep face centered */
+.cloud.c1 .cloud-face { width: 46%; top: 48%; }
+.cloud.c2 .cloud-face { width: 42%; top: 44%; }
+.cloud.c3 .cloud-face { width: 48%; top: 50%; }
+
+/* Keep existing cloud size rules but make them slightly puffier */
+.cloud.c1 { width: 160px; height: 54px; top: 28px; left: 40px; }
+.cloud.c1::before { width: 82px; height: 82px; left: -34px; top: -26px; }
+.cloud.c1::after  { width: 90px, height: 90px; right: -40px; top: -30px; }
+
+.cloud.c2 { width: 260px; height: 86px; top: 12px; right: 40px; }
+.cloud.c2::before { width: 120px; height: 120px; left: -42px; top: -40px; }
+.cloud.c2::after  { width: 160px, height: 160px; right: -56px; top: -56px; }
+
+.cloud.c3 { width: 120px; height: 46px; top: 62px; left: 240px; }
+.cloud.c3::before { width: 64px; height: 64px; left: -22px; top: -20px; }
+.cloud.c3::after  { width: 74px, height: 74px; right: -28px; top: -22px; }
+
+/* Add subtle floating animation (keeps existing timing) */
+@keyframes floatCloud {
+	0% { transform: translateY(0); }
+	50% { transform: translateY(-6px); }
+	100% { transform: translateY(0); }
+}
+
+/* Foreground ground strip */
+#ground {
+	position: absolute;
+	bottom: 54px; /* sits above controls panel */
+	left: 50%;
+	transform: translateX(-50%);
+	width: 100%;
+	max-width: 820px;
+	height: 28px;
+	background: linear-gradient(90deg,#8b5a3c 0%, #c07b4f 100%);
+	box-shadow: inset 0 -6px 0 rgba(0,0,0,0.06);
+	border-top: 6px solid rgba(255,255,255,0.06);
+	z-index: 3;
+	pointer-events: none;
+}
+
+/* Controls panel (bottom bar) */
+#controls {
+	position: absolute;
+	left: 50%;
+	transform: translateX(-50%);
+	bottom: 10px;
+	width: calc(100% - 32px);
+	max-width: 820px;
+	height: 72px;
+	background: rgba(255,255,255,0.95);
+	border-radius: 16px;
+	box-shadow: 0 8px 22px rgba(11,41,72,0.08);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-direction: column;
+	gap: 6px;
+	z-index: 5;
+	touch-action: manipulation;
+}
+
+/* TAP instruction */
+#tap-instruction {
+	font-weight: 700;
+	letter-spacing: 1px;
+	background: linear-gradient(90deg, rgba(46,157,247,0.08), rgba(79,203,83,0.04));
+	color: #0b2948;
+	padding: 10px 18px;
+	border-radius: 10px;
+	font-size: 16px;
+	box-shadow: 0 4px 10px rgba(11,41,72,0.06);
+}
+
+/* branding text under the tap instruction */
+#brand {
+	font-family: 'Georgia', serif;
+	color: #f5a623; /* yellow-ish accent */
+	font-size: 12px;
+	opacity: 0.9;
+	letter-spacing: 2px;
+}
+
+/* Make sure canvas and foreground stack in correct order */
+#game-canvas { position: relative; z-index: 2; display: block; }
+
+/* Responsive tweaks: on larger screens, make controls smaller and position to the right as in wireframe */
+@media (min-width: 720px) {
+	/* Place controls below the game area (flowed) on tablet/desktop
+	   instead of absolute-positioned over the canvas.
+	   This keeps "TAP TO JUMP" visually below the game and avoids overlap. */
+	#controls {
+		position: static;         /* flow in document, not absolute */
+		transform: none;
+		right: auto;
+		left: auto;
+		bottom: auto;
+		/* width and sizing remain similar to wireframe */
+		width: 360px;
+		height: 64px;
+		/* align to the right side of the game area container */
+		align-self: flex-end;
+		margin: 12px 28px 0 0;   /* top, right, bottom, left */
+		flex-direction: row;
+		padding: 6px 12px;
+		box-shadow: 0 8px 22px rgba(11,41,72,0.08);
+	}
+	#brand { display: none; }
+	#ground { bottom: 96px; }
+}
+
+/* small accessibility / focus styles */
+#start-btn, #play-again-btn {
+	border-radius: 8px;
+	padding: 10px 14px;
+	background: linear-gradient(180deg,#2E9DF7,#1c85e8);
+	color: #fff;
+	border: none;
+	box-shadow: 0 6px 14px rgba(46,157,247,0.18);
+}
+
+/* Small animation for jump (visual scaling during jump) - applied in canvas drawing via scale */
+@keyframes pop {
+	0% { transform: translateY(0) scale(1); }
+	50% { transform: translateY(-6px) scale(1.02); }
+	100% { transform: translateY(0) scale(1); }
+}
+
+/* Mobile adjustments */
+@media (max-width: 480px) {
+	#logo-placeholder { font-size: 16px; padding: 6px 8px; }
+	#hud { font-size: 14px; }
+}
+
+/* Responsive behavior: tablet / small desktop */
+@media (max-width: 720px) {
+	/* Slightly reduce HUD spacing */
+	#hud { padding: 0.4rem; gap: 0.5rem; font-size: 0.95rem; }
+	#controls { height: calc(var(--controls-height) - 6px); padding: 0.35rem; }
+	#tap-instruction { font-size: 0.95rem; padding: 0.45rem 0.8rem; }
+}
+
+/* Mobile: stack HUD items, ensure no overlap, enlarge tap targets */
+@media (max-width: 480px) {
+	#hud {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.5rem;
+		padding: 0.5rem;
+	}
+	.hud-center { order: 0; margin: 0 auto; }
+	.hud-left, .hud-right { justify-content: space-between; width: 100%; }
+	#controls {
+		position: fixed; /* keep controls accessible even when canvas scrolls */
+		left: 50%;
+		transform: translateX(-50%);
+		bottom: 8px;
+		width: calc(100% - 16px);
+		max-width: calc(var(--max-width) - 16px);
+		height: 68px;
+		padding: 0.5rem;
+	}
+	#canvas-wrap { aspect-ratio: 820 / 360; border-radius: 10px; }
+	/* increase button hit areas */
+	#instructions-btn, #pause-btn, #reset-btn { padding: 10px 12px; font-size: 0.95rem; }
+	/* ensure start-screen elements are readable */
+	.logo-wrap { gap: 0.6rem; width: 100%; }
+	#logo { width: clamp(100px, 36vw, 160px); }
+}
+
+/* Very small phones — ensure everything fits, reduce some spacing */
+@media (max-width: 360px) {
+	body { padding: 0.5rem; }
+	#controls { height: 64px; bottom: 6px; }
+	#tap-instruction { font-size: 0.9rem; padding: 0.4rem 0.6rem; }
+	#hud { font-size: 0.92rem; padding: 0.4rem; gap: 0.4rem; }
+}
+
+/* Accessibility: larger focus outline for keyboard users */
+:focus {
+	outline: 3px solid rgba(46,157,247,0.22);
+	outline-offset: 2px;
+}
+
+/* Cloud animations and face styles remain unchanged */

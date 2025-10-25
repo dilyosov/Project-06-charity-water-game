@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Clean Drop Runner</title>
+
+	<!-- Add inline favicon to avoid browser requesting /favicon.ico (prevents 404) -->
+	<link rel="icon" href='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="%232E9DF7"/><text x="8" y="11" font-size="9" text-anchor="middle" fill="%23fff" font-family="Arial,sans-serif">CW</text></svg>'>
+
+	<!-- Bootstrap CSS (for modal) -->
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="" crossorigin="anonymous">
+
+	<link rel="stylesheet" href="styles.css">
+
+    <!-- Prevent connection errors from the injected LivePreview WebSocket.
+         Use a safe wrapper that blocks known problematic hostnames (zany-space-engine)
+         and returns a harmless dummy socket object instead of attempting to connect.
+    -->
+    <script>
+        (function(){
+            // keep original reference
+            const NativeWS = window.WebSocket;
+            // If WebSocket is not available, do nothing
+            if (typeof NativeWS === 'undefined') return;
+
+            // Helper to create a simple dummy socket object that won't throw
+            function makeDummySocket() {
+                const dummy = {
+                    // mimic readyState CLOSED
+                    readyState: 3,
+                    send() {},
+                    close() {},
+                    addEventListener() {},
+                    removeEventListener() {},
+                    dispatchEvent() { return false; },
+                    // allow assignment of handlers without throwing
+                    onopen: null, onmessage: null, onerror: null, onclose: null
+                };
+                return dummy;
+            }
+
+            // Replace global WebSocket with a safe wrapper function
+            window.WebSocket = function(url, protocols) {
+                try {
+                    if (typeof url === 'string' && url.includes('zany-space-engine')) {
+                        // block attempts to contact the known problematic host used by some live previews
+                        console.info('Blocked LivePreview WebSocket URL to avoid error:', url);
+                        return makeDummySocket();
+                    }
+                    // Otherwise try to construct native socket
+                    return new NativeWS(url, protocols);
+                } catch (err) {
+                    // If construction throws (network issues, invalid URL), return dummy instead of throwing
+                    console.warn('WebSocket creation failed for', url, err);
+                    return makeDummySocket();
+                }
+            };
+
+            // Preserve prototype and static properties so code checking them still works
+            window.WebSocket.prototype = NativeWS.prototype;
+            // copy over numeric constants if present
+            ['CONNECTING','OPEN','CLOSING','CLOSED'].forEach(k => {
+                if (NativeWS[k] !== undefined) window.WebSocket[k] = NativeWS[k];
+            });
+        })();
+    </script>
+</head>
+<body>
+	<!-- Start Screen -->
+	<div id="start-screen" class="screen">
+		<!-- Logo wrapper: responsive sizing for small screens -->
+		<div class="logo-wrap">
+			<!-- Logo: try to load image, but fall back to text if missing -->
+			<img src="img/charity-water.jpg" alt="Charity: water logo" id="logo"
+				 onerror="this.classList.add('hidden'); document.getElementById('logo-placeholder').classList.remove('hidden');" />
+			<div id="logo-placeholder" class="hidden" aria-hidden="false">Clean Drop Runner</div>
+		</div>
+		 <h1>Clean Drop Runner</h1>
+		 <button id="start-btn">Start</button>
+		 <a href="https://www.charitywater.org/" target="_blank" id="learn-more">Learn More</a>
+	 </div>
+
+	 <!-- Game Area with Canvas -->
+	 <div id="game-area" class="hidden">
+		<!-- HUD with left / center / right regions for wireframe layout -->
+		<div id="hud">
+			<div class="hud-left"><span id="score">Score: 0</span></div>
+			<div class="hud-center"><img id="mini-logo" src="img/cw_logo_horizontal.png" alt="logo" onerror="this.classList.add('hidden')"></div>
+			<div class="hud-right">
+				<span id="lives">❤️ x 3</span>
+				<span id="highscore">High: 0</span>
+				<!-- Instructions button opens bootstrap modal -->
+				<button id="instructions-btn" type="button" class="btn btn-sm btn-outline-primary ms-2" data-bs-toggle="modal" data-bs-target="#instructionsModal">How to play</button>
+				<!-- Pause and Reset -->
+				<button id="pause-btn" class="btn btn-sm btn-outline-warning ms-2" type="button">Pause</button>
+				<button id="reset-btn" class="btn btn-sm btn-outline-danger ms-2" type="button">Reset</button>
+			</div>
+		</div>
+
+		 <!-- decorative background layer (clouds + ground) with friendly cartoon faces -->
+		 <div id="background">
+			 <div class="cloud c1">
+				<span class="cloud-face">
+					<span class="eye left"></span>
+					<span class="eye right"></span>
+					<span class="mouth"></span>
+				</span>
+			 </div>
+			 <div class="cloud c2">
+				<span class="cloud-face">
+					<span class="eye left"></span>
+					<span class="eye right"></span>
+					<span class="mouth"></span>
+				</span>
+			 </div>
+			 <div class="cloud c3">
+				<span class="cloud-face">
+					<span class="eye left"></span>
+					<span class="eye right"></span>
+					<span class="mouth"></span>
+				</span>
+			 </div>
+		 </div>
+
+		 <!-- responsive canvas wrapper: keeps logical resolution (820x360) but scales to viewport -->
+		 <div id="canvas-wrap" aria-hidden="false">
+			 <canvas id="game-canvas" width="820" height="360" aria-label="Game canvas"></canvas>
+		 </div>
+
+		 <!-- foreground ground strip (visual ground) -->
+		 <div id="ground"></div>
+
+		 <!-- mobile / touch controls panel (wireframe bottom bar) -->
+		 <div id="controls" aria-hidden="false">
+			 <div id="tap-instruction">TAP TO JUMP</div>
+			 <div id="brand">CLEAN DROP RUNNER</div>
+		 </div>
+	 </div>
+
+	 <!-- Instructions Modal (Bootstrap) -->
+	 <div class="modal fade" id="instructionsModal" tabindex="-1" aria-labelledby="instructionsModalLabel" aria-hidden="true">
+	  <div class="modal-dialog modal-dialog-centered modal-sm">
+	    <div class="modal-content">
+	      <div class="modal-header">
+	        <h5 class="modal-title" id="instructionsModalLabel">How to play</h5>
+	        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+	      </div>
+	      <div class="modal-body">
+	        <p><strong>Goal:</strong> Collect clean drops and survive as long as possible. Score increases over time and by collecting drops.</p>
+	        <p><strong>Controls:</strong> Tap the screen or press <kbd>Space</kbd> / <kbd>↑</kbd> to jump.</p>
+	        <p><strong>Barrels:</strong> Jump on top of barrels to stomp them and earn +10 points — avoid hitting them from the side.</p>
+	        <p><strong>Power-ups:</strong> Pick up green items for temporary bonuses (filter: neutralize hazards, pump: speed boost, well: +life).</p>
+	        <p><small>Tip: On mobile, tap the canvas. HUD shows score, lives and high score.</small></p>
+	      </div>
+	      <div class="modal-footer">
+	        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+	      </div>
+	    </div>
+	  </div>
+	</div>
+
+	 <!-- Game Over Screen -->
+	 <div id="game-over" class="screen hidden">
+		 <h2>Game Over!</h2>
+		 <p id="final-score">Final Score: 0</p>
+		 <p id="water-fact">Water Fact: Every drop counts!</p>
+		 <button id="play-again-btn">Play Again</button>
+		 <a href="https://www.charitywater.org/" target="_blank" id="learn-more-over">Learn More</a>
+	 </div>
+
+	 <!-- Bootstrap JS bundle (includes Popper) -->
+	 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="" crossorigin="anonymous"></script>
+
+	 <script src="script.js"></script>
+ </body>
+ </html>
