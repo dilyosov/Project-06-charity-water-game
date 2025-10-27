@@ -16,15 +16,40 @@ Secondary Colors:
 
 .hidden { display: none !important; }
 
+/* Layout variables: footer height and gaps make positioning robust across layouts */
+:root {
+	--footer-height: 64px; /* approximate fixed footer height; adjust if footer content changes */
+	--footer-gap: 12px;    /* spacing between footer and controls on mobile */
+	--footer-gap-small: 8px; /* smaller gap for very small phones */
+	--text-on-yellow: #041725; /* high-contrast dark text used on yellow backgrounds */
+}
+
 /* simple logo placeholder styling */
 #logo-placeholder {
 	font-weight: 700;
 	font-size: 18px;
-	color: #2E9DF7;
+	/* use a darker color for accessibility while keeping the yellow accent background */
+	color: var(--text-on-yellow);
 	padding: 8px 12px;
 	border-radius: 6px;
-	background: rgba(46,157,247,0.08);
+	/* slightly stronger yellow background for improved contrast */
+	background: rgba(255,213,79,0.14);
 	display: inline-block;
+}
+
+/* Ensure top-level Learn More links have sufficient contrast on light backgrounds */
+#learn-more, #learn-more-over {
+	color: var(--text-on-yellow); /* dark navy for high contrast */
+	background: transparent;
+	font-weight: 700;
+	text-decoration: underline;
+	padding: 6px 10px;
+	border-radius: 8px;
+}
+
+#learn-more:focus, #learn-more-over:focus {
+	outline: 3px solid rgba(46,157,247,0.22);
+	outline-offset: 2px;
 }
 
 /* ensure the game area prevents touch scrolling when active (kept simple) */
@@ -33,7 +58,7 @@ Secondary Colors:
 /* Layout for screens */
 body {
 	margin: 0;
-	font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+	font-family: 'Poppins', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
 	background: #f6fbff;
 	color: #0b2948;
 	display: flex;
@@ -109,8 +134,10 @@ body.modal-open {
 	gap: 0.5rem;
 	padding: 0.5rem 0.75rem;
 	font-size: var(--ui-font);
-	/* improved readability: semi-transparent panel + frosted blur */
-	background: rgba(246,251,255,0.8);
+    /* improved readability: semi-transparent panel + frosted blur
+	    use a subtle yellow tint to highlight the HUD (score/lives). Increased
+	    opacity gives better contrast between HUD background and surrounding page. */
+    background: rgba(255,213,79,0.14);
 	backdrop-filter: blur(4px);
 	-webkit-backdrop-filter: blur(4px);
 	/* allow HUD items to wrap onto new lines on narrow screens */
@@ -127,6 +154,9 @@ body.modal-open {
 .hud-left { flex: 0 1 auto; }
 .hud-center { flex: 1 1 auto; justify-content: center; }
 .hud-right { flex: 0 1 auto; justify-content: flex-end; }
+
+/* Small spacing between lives and highscore for readability */
+.hud-right #lives { margin-right: 10px; }
 
 /* mini logo scales with viewport but never too large */
 #mini-logo {
@@ -194,7 +224,6 @@ body.modal-open {
 	border-radius: 14px;
 	z-index: 5;
 }
-
 /* TAP instruction & branding scale with clamp for better readability */
 #tap-instruction {
 	font-weight: 700;
@@ -202,6 +231,9 @@ body.modal-open {
 	padding: 0.5rem 0.9rem;
 	border-radius: 10px;
 	box-shadow: 0 6px 16px rgba(11,41,72,0.06);
+	/* slightly stronger yellow tint to improve contrast against dark text */
+	background: linear-gradient(90deg, rgba(255,213,79,0.18), rgba(255,213,79,0.06));
+	color: var(--text-on-yellow);
 }
 
 /* Buttons use rem and clamp so they are tappable on phones */
@@ -211,8 +243,34 @@ body.modal-open {
 	border-radius: 10px;
 }
 
+/* Mute button styling: matches HUD button look, smaller padding for compact display */
+#mute-btn, #mute-btn-mobile {
+    font-size: clamp(0.8rem, 1.6vw, 0.92rem);
+    padding: 6px 8px;
+    border-radius: 8px;
+}
+
+/* Default: mobile mute button hidden; regular mute button visible in HUD-right */
+#mute-btn-mobile { display: none; }
+
 /* HUD control buttons spacing manageable on narrow screens */
 .hud-right button { margin-left: 0.5rem; }
+
+/* Mute button: keep visual parity with other HUD buttons but slightly different color */
+#mute-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 40px;
+	padding: 6px 8px;
+	font-size: 0.95rem;
+}
+#mute-btn[aria-pressed="true"] {
+	/* visually indicate muted state with higher-contrast colors */
+	background: linear-gradient(180deg,#FFB703,#F59E00);
+	color: var(--text-on-yellow);
+	border-color: rgba(0,0,0,0.08);
+}
 
 /* Friendly face container (positioned relative to cloud) */
 .cloud-face {
@@ -296,15 +354,15 @@ body.modal-open {
 /* Keep existing cloud size rules but make them slightly puffier */
 .cloud.c1 { width: 160px; height: 54px; top: 28px; left: 40px; }
 .cloud.c1::before { width: 82px; height: 82px; left: -34px; top: -26px; }
-.cloud.c1::after  { width: 90px, height: 90px; right: -40px; top: -30px; }
+.cloud.c1::after  { width: 90px; height: 90px; right: -40px; top: -30px; }
 
 .cloud.c2 { width: 260px; height: 86px; top: 12px; right: 40px; }
 .cloud.c2::before { width: 120px; height: 120px; left: -42px; top: -40px; }
-.cloud.c2::after  { width: 160px, height: 160px; right: -56px; top: -56px; }
+.cloud.c2::after  { width: 160px; height: 160px; right: -56px; top: -56px; }
 
 .cloud.c3 { width: 120px; height: 46px; top: 62px; left: 240px; }
 .cloud.c3::before { width: 64px; height: 64px; left: -22px; top: -20px; }
-.cloud.c3::after  { width: 74px, height: 74px; right: -28px; top: -22px; }
+.cloud.c3::after  { width: 74px; height: 74px; right: -28px; top: -22px; }
 
 /* Add subtle floating animation (keeps existing timing) */
 @keyframes floatCloud {
@@ -317,10 +375,11 @@ body.modal-open {
 #start-btn, #play-again-btn {
 	border-radius: 8px;
 	padding: 10px 14px;
-	background: linear-gradient(180deg,#2E9DF7,#1c85e8);
-	color: #fff;
+	/* primary CTA uses a deeper yellow so dark text meets contrast */
+	background: linear-gradient(180deg,#FFB703,#F59E00);
+	color: var(--text-on-yellow);
 	border: none;
-	box-shadow: 0 6px 14px rgba(46,157,247,0.18);
+	box-shadow: 0 6px 14px rgba(245,158,0,0.22);
 }
 
 /* Small animation for jump (visual scaling during jump) - applied in canvas drawing via scale */
@@ -353,23 +412,34 @@ body.modal-open {
 		padding: 0.5rem;
 	}
 	.hud-center { order: 0; margin: 0 auto; }
-	.hud-left, .hud-right { justify-content: space-between; width: 100%; }
+	/* Reorder HUD on small screens so the mobile mute button appears between
+	   the difficulty (hud-left) and the lives/highscore (hud-right). Placing
+	   the mobile mute as a direct child of #hud and giving it order:2 ensures
+	   it sits between the two regions when stacked vertically. */
+	.hud-left { order: 1; justify-content: space-between; width: 100%; }
+	#mute-btn-mobile { order: 2; display: inline-block !important; margin: 0.25rem auto; }
+	.hud-right { order: 3; justify-content: space-between; width: 100%; }
 	#controls {
 		position: fixed; /* keep controls accessible even when canvas scrolls */
 		left: 50%;
 		transform: translateX(-50%);
-		bottom: 8px;
+	/* place controls above the fixed footer by default on mobile */
+	bottom: calc(var(--footer-height) + var(--footer-gap));
 		width: calc(100% - 16px);
 		max-width: calc(var(--max-width) - 16px);
 		height: 68px;
 		padding: 0.5rem;
+	z-index: 80; /* ensure controls (and TAP instruction) appear above footer */
 	}
 	#canvas-wrap { aspect-ratio: 820 / 360; border-radius: 10px; }
 	/* increase button hit areas */
-	#instructions-btn, #pause-btn, #reset-btn { padding: 10px 12px; font-size: 0.95rem; }
+	#instructions-btn, #pause-btn, #reset-btn { padding: 8px 10px; font-size: 0.86rem; }
 	/* ensure start-screen elements are readable */
 	.logo-wrap { gap: 0.6rem; width: 100%; }
 	#logo { width: clamp(100px, 36vw, 160px); }
+	/* On small screens hide the HUD-right mute button and show the mobile one near the mini-logo */
+	#mute-btn { display: none !important; }
+	#mute-btn-mobile { display: inline-block !important; margin-left: 8px; }
 }
 
 /* Very small phones — ensure everything fits, reduce some spacing */
@@ -377,6 +447,8 @@ body.modal-open {
 	body { padding: 0.5rem; }
 	#controls { height: 64px; bottom: 6px; }
 	#tap-instruction { font-size: 0.9rem; padding: 0.4rem 0.6rem; }
+	/* slightly smaller buttons on very small phones so longer labels fit */
+	#instructions-btn, #pause-btn, #reset-btn { font-size: 0.80rem; padding: 6px 8px; }
 	#hud { font-size: 0.92rem; padding: 0.4rem; gap: 0.4rem; }
 }
 
@@ -409,6 +481,44 @@ body.modal-open {
 	/* slight outline to match cartoon style */
 	border: 2px solid rgba(4,34,60,0.06);
 }
+
+/* Floating popups created dynamically in JS when player interacts (collect/stomp/powerup/hit) */
+.popup-floating {
+	position: absolute;
+	left: 0;
+	top: 0;
+	transform: translate(-50%, -50%);
+	pointer-events: none;
+	font-weight: 700;
+	padding: 6px 10px;
+	border-radius: 8px;
+	color: #fff;
+	white-space: nowrap;
+	font-size: 14px;
+	opacity: 1;
+	transition: transform 700ms ease-out, opacity 700ms ease-out;
+	will-change: transform, opacity;
+	z-index: 20; /* above canvas and controls */
+}
+.popup-collect { background: linear-gradient(90deg,#4FCB53,#2EA84A); }
+.popup-stomp   { background: linear-gradient(90deg,#FFB703,#F59E00); color: var(--text-on-yellow); }
+.popup-powerup { background: linear-gradient(90deg,#FF902A,#FF5722); }
+.popup-hit     { background: linear-gradient(90deg,#F5402C,#c73a28); }
+
+/* small subtle shadow to make popups readable */
+.popup-floating { box-shadow: 0 8px 18px rgba(11,41,72,0.12); }
+
+/* Impact popup styling: celebratory yellow with soft white glow */
+.popup-impact {
+	background: linear-gradient(90deg, #FFB703, #F59E00);
+	color: var(--text-on-yellow);
+	font-size: 15px;
+	padding: 8px 12px;
+	border-radius: 10px;
+	box-shadow: 0 10px 30px rgba(245,158,0,0.18), 0 0 18px rgba(255,255,255,0.6) inset;
+	text-shadow: 0 1px 0 rgba(255,255,255,0.6);
+}
+
 
 /* left and right puffs remain using pseudo elements but softened */
 .cloud::before,
@@ -444,15 +554,15 @@ body.modal-open {
 /* Keep existing cloud size rules but make them slightly puffier */
 .cloud.c1 { width: 160px; height: 54px; top: 28px; left: 40px; }
 .cloud.c1::before { width: 82px; height: 82px; left: -34px; top: -26px; }
-.cloud.c1::after  { width: 90px, height: 90px; right: -40px; top: -30px; }
+.cloud.c1::after  { width: 90px; height: 90px; right: -40px; top: -30px; }
 
 .cloud.c2 { width: 260px; height: 86px; top: 12px; right: 40px; }
 .cloud.c2::before { width: 120px; height: 120px; left: -42px; top: -40px; }
-.cloud.c2::after  { width: 160px, height: 160px; right: -56px; top: -56px; }
+.cloud.c2::after  { width: 160px; height: 160px; right: -56px; top: -56px; }
 
 .cloud.c3 { width: 120px; height: 46px; top: 62px; left: 240px; }
 .cloud.c3::before { width: 64px; height: 64px; left: -22px; top: -20px; }
-.cloud.c3::after  { width: 74px, height: 74px; right: -28px; top: -22px; }
+.cloud.c3::after  { width: 74px; height: 74px; right: -28px; top: -22px; }
 
 /* Add subtle floating animation (keeps existing timing) */
 @keyframes floatCloud {
@@ -476,6 +586,53 @@ body.modal-open {
 	z-index: 3;
 	pointer-events: none;
 }
+
+/* Footer: fixed at bottom with links to charity: water (homepage + donate) */
+#site-footer {
+	position: fixed;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 60; /* above game UI */
+	/* ensure we expose a consistent height for layout calculations */
+	min-height: var(--footer-height);
+	background: rgba(11,41,72,0.96);
+	color: #fff;
+	box-shadow: 0 -6px 18px rgba(4,34,60,0.12);
+}
+#site-footer .footer-inner {
+	max-width: var(--max-width);
+	margin: 0 auto;
+	padding: 10px 16px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+#site-footer .footer-blurb {
+	margin: 0;
+	font-size: 13px;
+	opacity: 0.95;
+}
+#site-footer nav a {
+	color: #fff;
+	text-decoration: none;
+	margin-left: 12px;
+	font-weight: 700;
+	padding: 6px 10px;
+	border-radius: 8px;
+	background: linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+}
+
+/* Small screens: make footer more compact and stack content */
+@media (max-width: 520px) {
+	#site-footer .footer-inner { flex-direction: column; align-items: center; padding: 8px; }
+	#site-footer .footer-blurb { font-size: 12px; text-align: center; }
+	#site-footer nav a { margin-left: 8px; margin-top: 6px; }
+}
+
+/* Make room for fixed footer in the game area so it doesn't overlap controls */
+#game-area { padding-bottom: calc(var(--controls-height) + 1.25rem + var(--footer-height)); }
 
 /* Controls panel (bottom bar) */
 #controls {
@@ -502,8 +659,9 @@ body.modal-open {
 #tap-instruction {
 	font-weight: 700;
 	letter-spacing: 1px;
-	background: linear-gradient(90deg, rgba(46,157,247,0.08), rgba(79,203,83,0.04));
-	color: #0b2948;
+	/* use a subtle yellow callout instead of blue */
+	background: linear-gradient(90deg, rgba(255,213,79,0.12), rgba(255,213,79,0.04));
+	color: #072033;
 	padding: 10px 18px;
 	border-radius: 10px;
 	font-size: 16px;
@@ -513,7 +671,7 @@ body.modal-open {
 /* branding text under the tap instruction */
 #brand {
 	font-family: 'Georgia', serif;
-	color: #f5a623; /* yellow-ish accent */
+    color: var(--text-on-yellow); /* use darker color for better contrast */
 	font-size: 12px;
 	opacity: 0.9;
 	letter-spacing: 2px;
@@ -551,10 +709,11 @@ body.modal-open {
 #start-btn, #play-again-btn {
 	border-radius: 8px;
 	padding: 10px 14px;
-	background: linear-gradient(180deg,#2E9DF7,#1c85e8);
-	color: #fff;
+	/* primary CTA uses a deeper yellow so dark text meets contrast */
+	background: linear-gradient(180deg,#FFB703,#F59E00);
+	color: var(--text-on-yellow);
 	border: none;
-	box-shadow: 0 6px 14px rgba(46,157,247,0.18);
+	box-shadow: 0 6px 14px rgba(245,158,0,0.22);
 }
 
 /* Small animation for jump (visual scaling during jump) - applied in canvas drawing via scale */
@@ -592,15 +751,17 @@ body.modal-open {
 		position: fixed; /* keep controls accessible even when canvas scrolls */
 		left: 50%;
 		transform: translateX(-50%);
-		bottom: 8px;
+		/* place controls above the fixed footer by default on mobile */
+		bottom: calc(var(--footer-height) + var(--footer-gap));
 		width: calc(100% - 16px);
 		max-width: calc(var(--max-width) - 16px);
 		height: 68px;
 		padding: 0.5rem;
+		z-index: 80; /* ensure controls (and TAP instruction) appear above footer */
 	}
 	#canvas-wrap { aspect-ratio: 820 / 360; border-radius: 10px; }
 	/* increase button hit areas */
-	#instructions-btn, #pause-btn, #reset-btn { padding: 10px 12px; font-size: 0.95rem; }
+	#instructions-btn, #pause-btn, #reset-btn { padding: 8px 10px; font-size: 0.86rem; }
 	/* ensure start-screen elements are readable */
 	.logo-wrap { gap: 0.6rem; width: 100%; }
 	#logo { width: clamp(100px, 36vw, 160px); }
@@ -609,14 +770,15 @@ body.modal-open {
 /* Very small phones — ensure everything fits, reduce some spacing */
 @media (max-width: 360px) {
 	body { padding: 0.5rem; }
-	#controls { height: 64px; bottom: 6px; }
+	/* very small phones: keep controls above footer using the footer variable */
+	#controls { height: 64px; bottom: calc(var(--footer-height) + var(--footer-gap-small)); z-index: 80; }
 	#tap-instruction { font-size: 0.9rem; padding: 0.4rem 0.6rem; }
 	#hud { font-size: 0.92rem; padding: 0.4rem; gap: 0.4rem; }
 }
 
 /* Accessibility: larger focus outline for keyboard users */
 :focus {
-	outline: 3px solid rgba(46,157,247,0.22);
+	outline: 3px solid rgba(255,213,79,0.22);
 	outline-offset: 2px;
 }
 

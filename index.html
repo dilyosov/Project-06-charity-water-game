@@ -11,6 +11,9 @@
 	<!-- Bootstrap CSS (for modal) -->
 	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="" crossorigin="anonymous">
 
+	<!-- Brand-like webfont (Poppins chosen as a friendly, on-brand geometric sans) -->
+	<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+
 	<link rel="stylesheet" href="styles.css">
 
     <!-- Prevent connection errors from the injected LivePreview WebSocket.
@@ -77,7 +80,16 @@
 			<div id="logo-placeholder" class="hidden" aria-hidden="false">Clean Drop Runner</div>
 		</div>
 		 <h1>Clean Drop Runner</h1>
-		 <button id="start-btn">Start</button>
+	 	<!-- Difficulty selector: saved to localStorage, defaults to Normal -->
+	 	<fieldset id="difficulty-fieldset" style="border:none; padding:0; margin:0; display:inline-block;">
+			<legend class="visually-hidden">Select difficulty</legend>
+			<label style="margin-right:10px; font-weight:600;">Difficulty:</label>
+			<label style="margin-right:6px;"><input type="radio" name="difficulty" value="Easy"> Easy</label>
+			<label style="margin-right:6px;"><input type="radio" name="difficulty" value="Normal" checked> Normal</label>
+			<label><input type="radio" name="difficulty" value="Hard"> Hard</label>
+		</fieldset>
+		<br />
+	 	<button id="start-btn">Start</button>
 		 <a href="https://www.charitywater.org/" target="_blank" id="learn-more">Learn More</a>
 	 </div>
 
@@ -85,8 +97,13 @@
 	 <div id="game-area" class="hidden">
 		<!-- HUD with left / center / right regions for wireframe layout -->
 		<div id="hud">
-			<div class="hud-left"><span id="score">Score: 0</span></div>
+			<div class="hud-left">
+				<span id="score">Score: 0</span>
+				<span id="difficulty-display" style="margin-left:10px; font-weight:600;">Diff: Normal</span>
+			</div>
 			<div class="hud-center"><img id="mini-logo" src="img/cw_logo_horizontal.png" alt="logo" onerror="this.classList.add('hidden')"></div>
+				<!-- Mobile mute button (shown on small screens near the mini logo) -->
+				<button id="mute-btn-mobile" class="btn btn-sm btn-outline-secondary ms-2 hidden" type="button" aria-pressed="false" title="Mute / Unmute audio">🔊</button>
 			<div class="hud-right">
 				<span id="lives">❤️ x 3</span>
 				<span id="highscore">High: 0</span>
@@ -95,6 +112,8 @@
 				<!-- Pause and Reset -->
 				<button id="pause-btn" class="btn btn-sm btn-outline-warning ms-2" type="button">Pause</button>
 				<button id="reset-btn" class="btn btn-sm btn-outline-danger ms-2" type="button">Reset</button>
+				<!-- Mute / Unmute -->
+				<button id="mute-btn" class="btn btn-sm btn-outline-secondary ms-2" type="button" aria-pressed="false" title="Mute / Unmute audio">🔊</button>
 			</div>
 		</div>
 
@@ -138,8 +157,8 @@
 		 </div>
 	 </div>
 
-	 <!-- Instructions Modal (Bootstrap) -->
-	 <div class="modal fade" id="instructionsModal" tabindex="-1" aria-labelledby="instructionsModalLabel" aria-hidden="true">
+ 	<!-- Instructions Modal (Bootstrap) -->
+ 	<div class="modal fade" id="instructionsModal" tabindex="-1" aria-labelledby="instructionsModalLabel">
 	  <div class="modal-dialog modal-dialog-centered modal-sm">
 	    <div class="modal-content">
 	      <div class="modal-header">
@@ -168,6 +187,17 @@
 		 <button id="play-again-btn">Play Again</button>
 		 <a href="https://www.charitywater.org/" target="_blank" id="learn-more-over">Learn More</a>
 	 </div>
+
+	<!-- Footer with links to charity: water homepage and donate page (fixed at bottom) -->
+	<footer id="site-footer" aria-label="charity links and info">
+		<div class="footer-inner">
+			<p class="footer-blurb">This project highlights <strong>charity: water</strong>, a non-profit bringing clean water to communities worldwide.</p>
+			<nav aria-label="charity links">
+				<a id="footer-home" href="https://www.charitywater.org/" target="_blank" rel="noopener" aria-label="Visit charity: water homepage">Charity: water</a>
+				<a id="footer-donate" href="https://www.charitywater.org/donate" target="_blank" rel="noopener" aria-label="Donate to charity: water">Donate</a>
+			</nav>
+		</div>
+	</footer>
 
 	 <!-- Bootstrap JS bundle (includes Popper) -->
 	 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="" crossorigin="anonymous"></script>

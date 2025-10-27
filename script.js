@@ -20,6 +20,197 @@ const ctx = canvas.getContext('2d');
 // add HUD control reference (ensure pauseBtn exists to avoid ReferenceError)
 const pauseBtn = document.getElementById('pause-btn');
 const resetBtn = document.getElementById('reset-btn');
+// Difficulty UI elements (added to index.html)
+const difficultyRadios = document.querySelectorAll('input[name="difficulty"]');
+const difficultyDisplay = document.getElementById('difficulty-display');
+// current difficulty state and settings placeholder
+let currentDifficulty = localStorage.getItem('cdr-difficulty') || 'Normal';
+let difficultyConfig = {};
+// Canvas wrapper for DOM-positioned popups
+const canvasWrap = document.getElementById('canvas-wrap');
+
+/* =====================
+   Audio: SFX and BGM loader & player
+   Place audio files in `audio/` (ogg preferred). If files are missing the game will continue silently.
+   Expected filenames (examples): jump/collect/hit/powerup/stomp/click/win/bgm
+   Defining this near the top ensures `playSound()` is available for early handlers (jump, UI clicks).
+======================*/
+
+const audioFiles = {
+	jump: 'audio/jump.ogg',
+	collect: 'audio/collect.ogg',
+	hit: 'audio/hit.ogg',
+	powerup: 'audio/powerup.ogg',
+	stomp: 'audio/stomp.ogg',
+	click: 'audio/click.ogg',
+	win: 'audio/win.ogg',
+	bgm: 'audio/bgm.ogg'
+};
+
+// Preload audio elements (Audio objects). For short SFX we create an Audio and clone when playing
+const audioCache = {};
+Object.keys(audioFiles).forEach(key => {
+	try {
+		const src = audioFiles[key];
+		const a = new Audio();
+		a.src = src;
+		a.preload = 'auto';
+		a.load();
+		audioCache[key] = a;
+		a.addEventListener('error', () => {
+			// not fatal; warn for debugging
+			// console.warn(`Audio failed to load: ${src}`);
+		});
+	} catch (e) {
+		// ignore environments without Audio
+	}
+});
+
+// Play a short SFX by cloning the cached Audio element so multiple instances can overlap.
+// Track whether audio should currently play. This is true during gameplay and
+// turned false when the game ends so no further SFX/BGM will play.
+// persisted mute flag (true when muted)
+let muted = (localStorage.getItem('cdr-muted') === 'true');
+// audioEnabled reflects whether audio may play (true when not muted)
+let audioEnabled = !muted;
+// Track active cloned audio instances so we can stop them on game over.
+const activeAudioInstances = new Set();
+
+function playSound(name, options = {}) {
+	// options: { volume, play, force, excludeFromStop }
+	// `force` allows playing even when `audioEnabled` is false (useful for
+	// feedback clicks when muting). `excludeFromStop` marks the instance so
+	// `stopAllAudio()` will not pause/remove it.
+	const force = !!options.force;
+	if (!audioEnabled && !force) return;
+	const base = audioCache[name];
+	if (!base) return;
+	try {
+		// For BGM, use the base element and control loop/volume
+		if (name === 'bgm') {
+			base.loop = true;
+			base.volume = (options.volume !== undefined) ? options.volume : 0.36;
+			if (options.play) base.play().catch(() => {});
+			return;
+		}
+
+		// For short SFX, clone the Audio so multiple instances can overlap.
+		const inst = base.cloneNode(true);
+		inst.volume = (options.volume !== undefined) ? options.volume : 0.9;
+
+		// Track instance so we can stop it on game over, unless explicitly excluded.
+		const shouldTrack = !options.excludeFromStop;
+		if (shouldTrack) activeAudioInstances.add(inst);
+		const removeInstance = () => { if (shouldTrack) activeAudioInstances.delete(inst); };
+		inst.addEventListener('ended', removeInstance);
+		inst.addEventListener('pause', removeInstance);
+		inst.play().catch(() => {
+			// If playback fails (autoplay policy), ensure we don't leak the instance
+			removeInstance();
+		});
+	} catch (e) {
+		// ignore playback exceptions (autoplay policies, missing file)
+	}
+}
+
+// Helper: start/stop background music
+function startBGM() { if (audioEnabled) playSound('bgm', { play: true, volume: 0.36 }); }
+function stopBGM() { const b = audioCache['bgm']; if (b) { b.pause(); try { b.currentTime = 0; } catch(e){} } }
+
+// Stop and clear all active audio instances (SFX and BGM). Called on game over.
+function stopAllAudio() {
+	// disable audio to prevent new sounds from starting while we clean up
+	audioEnabled = false;
+	// stop cloned SFX instances
+	for (const inst of Array.from(activeAudioInstances)) {
+		try { inst.pause(); inst.currentTime = 0; } catch (e) {}
+		activeAudioInstances.delete(inst);
+	}
+	// stop background music
+	stopBGM();
+}
+
+// Update UI for mute buttons and persist state
+function updateMuteUI() {
+	const btn = document.getElementById('mute-btn');
+	const btnMobile = document.getElementById('mute-btn-mobile');
+	const icon = muted ? '🔇' : '🔊';
+	if (btn) { btn.textContent = icon; btn.setAttribute('aria-pressed', String(muted)); }
+	if (btnMobile) { btnMobile.textContent = icon; btnMobile.setAttribute('aria-pressed', String(muted)); }
+}
+
+// Toggle mute state (persist in localStorage, control audio)
+function setMuted(value) {
+	muted = !!value;
+	localStorage.setItem('cdr-muted', muted ? 'true' : 'false');
+	audioEnabled = !muted;
+	updateMuteUI();
+	if (muted) {
+		// stop all audio immediately when muting
+		stopAllAudio();
+	} else {
+		// unmuting: if game is running, resume BGM
+		if (running) startBGM();
+	}
+}
+
+// attach handlers for mute buttons (both desktop and mobile versions)
+function initMuteButtons() {
+	const b = document.getElementById('mute-btn');
+	const bm = document.getElementById('mute-btn-mobile');
+	// Play the click sound even when muting. We force playback and exclude the
+	// instance from global stop so it won't be immediately silenced when
+	// setMuted(true) calls stopAllAudio().
+	if (b) b.addEventListener('click', () => {
+		playSound('click', { force: true, excludeFromStop: true });
+		setMuted(!muted);
+	});
+	if (bm) bm.addEventListener('click', () => {
+		playSound('click', { force: true, excludeFromStop: true });
+		setMuted(!muted);
+	});
+	// reflect initial state
+	updateMuteUI();
+}
+
+// initialize mute buttons after DOM load (script is at page end but safe)
+initMuteButtons();
+
+/* Create a floating DOM popup positioned over the canvas. 
+   logicalX/logicalY are in canvas logical coordinates (0..canvas.width, 0..canvas.height).
+   className is one of .popup-collect/.popup-stomp/.popup-powerup/.popup-hit to style it. */
+function createPopup(text, logicalX, logicalY, className) {
+	if (!canvasWrap) return;
+	const wrapRect = canvasWrap.getBoundingClientRect();
+	// convert logical canvas coords to pixel positions within the canvas wrapper
+	const px = (logicalX / canvas.width) * canvasWrap.clientWidth;
+	const py = (logicalY / canvas.height) * canvasWrap.clientHeight;
+
+	const el = document.createElement('div');
+	el.className = `popup-floating ${className || ''}`;
+	el.textContent = text;
+	// position absolute inside canvasWrap
+	el.style.left = `${px}px`;
+	el.style.top = `${py}px`;
+	// initial visual state (centered)
+	el.style.transform = 'translate(-50%, -50%)';
+	el.style.opacity = '1';
+	canvasWrap.appendChild(el);
+
+	// force a reflow, then animate upward + fade
+	// small timeout to ensure transition runs
+	requestAnimationFrame(() => {
+		requestAnimationFrame(() => {
+			el.style.transform = 'translate(-50%, -140%) scale(1.02)';
+			el.style.opacity = '0';
+		});
+	});
+
+	// remove after transition
+	setTimeout(() => {
+		if (el && el.parentNode) el.parentNode.removeChild(el);
+	}, 800);
+}
 
 /* ===============
    Game parameters
@@ -34,6 +225,72 @@ let highscore = Number(localStorage.getItem('cdr-highscore') || 0);
 
 let gameSpeed = 180; // pixels per second base
 let difficultyTimer = 0;
+
+/* Default difficulty settings (adjusts pace, spawn rates, lives, scoring) */
+function getDifficultySettings(mode) {
+	// returns settings object for Easy / Normal / Hard
+	switch (mode) {
+		case 'Easy':
+			return {
+				gameSpeed: 140,
+				lives: 5,
+				spawnObstacleProb: 0.45,
+				spawnCollectibleProb: 0.5,
+				spawnPowerupProb: 0.12,
+				scoreMultiplier: 0.9,
+				bumpPer10s: 8,
+				/* spawnInterval (seconds) controls how often we try to spawn items;
+				   make Easy mode spawn less frequently (longer interval) */
+				spawnInterval: 0.9
+			};
+		case 'Hard':
+			return {
+				gameSpeed: 220,
+				lives: 2,
+				spawnObstacleProb: 0.78,
+				spawnCollectibleProb: 0.28,
+				spawnPowerupProb: 0.05,
+				scoreMultiplier: 1.15,
+				bumpPer10s: 20,
+				/* Hard spawns more often */
+				spawnInterval: 0.45
+			};
+		case 'Normal':
+ 		default:
+ 			return {
+ 				gameSpeed: 180,
+ 				lives: 3,
+ 				spawnObstacleProb: 0.6,
+ 				spawnCollectibleProb: 0.35,
+ 				spawnPowerupProb: 0.08,
+ 				scoreMultiplier: 1.0,
+	 			bumpPer10s: 12,
+	 			/* default spawning cadence */
+	 			spawnInterval: 0.6
+ 			};
+}
+}
+
+// apply saved difficulty selection to radios and HUD
+function applySavedDifficulty() {
+    // ensure radios reflect stored value
+    difficultyRadios.forEach(r => {
+        r.checked = (r.value === currentDifficulty);
+    });
+    difficultyConfig = getDifficultySettings(currentDifficulty);
+    if (difficultyDisplay) difficultyDisplay.textContent = `Diff: ${currentDifficulty}`;
+}
+applySavedDifficulty();
+
+// Wire up changing difficulty on start screen
+difficultyRadios.forEach(r => {
+    r.addEventListener('change', (e) => {
+        if (!e.target.checked) return;
+        currentDifficulty = e.target.value;
+        localStorage.setItem('cdr-difficulty', currentDifficulty);
+        applySavedDifficulty();
+    });
+});
 
 /* Player (clean water drop) */
 const player = {
@@ -67,6 +324,55 @@ let filterAura = { active: false, radius: 0, opacity: 0 };
 /* Speed line particles for pump visual */
 let speedLines = [];
 
+/* =======
+   Canvas decorations (clouds, trees, grass)
+   Declared with let/const before use per requirement.
+   These are friendly, low-cost canvas shapes drawn behind the player.
+   ======= */
+let decorClouds = [];
+let decorTrees = [];
+let decorGrass = [];
+let decorTime = 0; // seconds, drives decor animations (cloud parallax, tree sway)
+
+/* Initialize decorations based on canvas logical size. Keeps positions responsive. */
+function initDecor() {
+	// ensure canvas logical size is set
+	const w = canvas.width;
+	const h = canvas.height;
+
+	// Clouds: few fluffy clouds with x,y and scale
+	decorClouds = [
+		{ x: Math.round(w * 0.18), y: Math.round(h * 0.12), scale: 1.0 },
+		{ x: Math.round(w * 0.62), y: Math.round(h * 0.08), scale: 1.35 },
+		{ x: Math.round(w * 0.85), y: Math.round(h * 0.18), scale: 0.9 }
+	];
+
+	// assign a gentle horizontal speed and direction for parallax (px/sec)
+	for (const c of decorClouds) {
+		c.speed = rand(6, 18) * (0.6 + c.scale * 0.2); // scale affects apparent speed
+		c.dir = (Math.random() < 0.5) ? -1 : 1; // some clouds drift left, some right
+	}
+
+	// Trees: position along the ground (x, baseY, size)
+	decorTrees = [];
+	const groundY = h - 32; // matches ground offset used elsewhere
+	for (let i = 0; i < 4; i++) {
+		const tx = Math.round((w / 4) * i + rand(20, w / 6));
+		const size = Math.round(rand(36, 58));
+		// add a small sway phase so trees animate gently
+		decorTrees.push({ x: tx, baseY: groundY, size, phase: rand(0, Math.PI*2), swayAmp: rand(2,6) });
+	}
+
+	// Grass: generate blades across the visible ground area
+	decorGrass = [];
+	const blades = Math.round(w / 28);
+	for (let i = 0; i < blades; i++) {
+		const gx = Math.round(i * (w / blades) + rand(-6, 6));
+		const gh = Math.round(rand(8, 18));
+		decorGrass.push({ x: gx, h: gh });
+	}
+}
+
 /* Water facts for game over screen */
 const waterFacts = [
 	"771 million people lack access to clean water.",
@@ -75,6 +381,24 @@ const waterFacts = [
 	"Women and children spend 200 million hours daily collecting water.",
 	"Access to clean water can break the cycle of poverty."
 ];
+
+/* Clean Water Impact milestones: show an impact popup when score reaches milestones */
+const impactFacts = [
+	{ score: 100, text: "You’ve brought clean water to 1 person 💧", shown: false },
+	{ score: 300, text: "A whole family now has access to clean water! 🚰", shown: false },
+	{ score: 600, text: "Your drops could fill a new well! 🌍", shown: false }
+];
+
+function checkImpactFacts() {
+	// show each fact only once when score passes its threshold
+	for (const fact of impactFacts) {
+		if (!fact.shown && score >= fact.score) {
+			fact.shown = true;
+			// position popup slightly above player for visibility
+			createPopup(fact.text, player.x + 40, Math.max(20, player.y - 20), 'popup-impact');
+		}
+	}
+}
 
 /* Utility: random choice */
 function rand(min, max) { return Math.random() * (max - min) + min; }
@@ -90,6 +414,8 @@ function resizeCanvas() {
 	// CSS width is handled via styles.css (max-width)
 }
 resizeCanvas();
+// initialize decorations once logical size is known
+initDecor();
 
 /* ============
    Game methods
@@ -97,13 +423,17 @@ resizeCanvas();
 
 /* Initialize or reset the game state */
 function initGame() {
+	// enable audio for the upcoming gameplay session if not muted
+	audioEnabled = !muted;
 	// Reset variables
 	running = true;
 	lastTime = performance.now();
 	spawnTimer = 0;
 	score = 0;
 	secondsCounter = 0;
-	gameSpeed = 180;
+	// base parameters come from selected difficulty
+	difficultyConfig = getDifficultySettings(currentDifficulty);
+	gameSpeed = difficultyConfig.gameSpeed;
 	difficultyTimer = 0;
 	obstacles = [];
 	collectibles = [];
@@ -118,10 +448,15 @@ function initGame() {
 
 	// Update HUD
 	scoreDisplay.textContent = `Score: ${score}`;
-	livesDisplay.textContent = `Lives: ${3}`;
+	// set lives according to difficulty
+	livesDisplay.textContent = `Lives: ${difficultyConfig.lives}`;
 	highscoreEl && (highscoreEl.textContent = `High: ${highscore}`);
 
-	// audio removed: no loading or playback
+	// reposition decorations for current canvas size
+	initDecor();
+
+	// start background music (if available)
+	startBGM();
 
 	// Start loop
 	lastTime = performance.now();
@@ -140,7 +475,7 @@ function resetGame() {
 	score = 0;
 	secondsCounter = 0;
 	scoreDisplay.textContent = `Score: ${score}`;
-	livesDisplay.textContent = `Lives: ${3}`;
+	livesDisplay.textContent = `Lives: ${difficultyConfig.lives}`;
 	// ensure pause button shows 'Pause' next time
 	if (pauseBtn) pauseBtn.textContent = 'Pause';
 	// show start UI
@@ -155,6 +490,15 @@ function spawnObstacle() {
 	const y = canvas.height - h - 32; // ground offset
 	// mark as barrel so drawGame knows to render barrel details
 	obstacles.push({ x: canvas.width + 10, y, w, h, barrel: true, color: '#1b1b1b' });
+}
+
+/* Spawn a charity: water jerry can that moves like a barrel but gives a random bonus on hit */
+function spawnJerry() {
+	const h = rand(34, 50);
+	const w = rand(28, 40);
+	const y = canvas.height - h - 32; // ground aligned
+	// mark as jerry so drawGame knows to render a jerry can and collision gives bonus
+	obstacles.push({ x: canvas.width + 10, y, w, h, jerry: true });
 }
 
 function spawnCollectible() {
@@ -185,13 +529,18 @@ function isColliding(a, b) {
 function updateGame(dt) {
 	if (!running) return;
 
+	// advance decorative animation clock
+	decorTime += dt;
+
 	// remember previous vertical position for stomp detection
 	player.prevY = player.y;
 
 	// increase difficulty slowly
 	difficultyTimer += dt;
 	if (difficultyTimer > 10) {
-		gameSpeed += 12; // small bump every 10 seconds
+		// increase speed based on difficulty-configured bump amount
+		const bump = (difficultyConfig && difficultyConfig.bumpPer10s) ? difficultyConfig.bumpPer10s : 12;
+		gameSpeed += bump; // small bump every 10 seconds
 		difficultyTimer = 0;
 	}
 
@@ -209,14 +558,32 @@ function updateGame(dt) {
 		player.onGround = false;
 	}
 
-	// Spawning logic
+	// Spawning logic (probabilities & cadence controlled by difficulty)
 	spawnTimer += dt;
-	// spawn obstacles with some probability per second
-	if (spawnTimer > 0.6) {
-		if (Math.random() < 0.6) spawnObstacle();
-		if (Math.random() < 0.35) spawnCollectible();
-		if (Math.random() < 0.08) spawnPowerup();
+	// Use a configurable spawn interval so Easy/Hard can change how often items appear
+	const spawnInterval = (difficultyConfig && difficultyConfig.spawnInterval) ? difficultyConfig.spawnInterval : 0.6;
+	if (spawnTimer > spawnInterval) {
+		const obsProb = (difficultyConfig && difficultyConfig.spawnObstacleProb) ? difficultyConfig.spawnObstacleProb : 0.6;
+		const colProb = (difficultyConfig && difficultyConfig.spawnCollectibleProb) ? difficultyConfig.spawnCollectibleProb : 0.35;
+		const powProb = (difficultyConfig && difficultyConfig.spawnPowerupProb) ? difficultyConfig.spawnPowerupProb : 0.08;
+		if (Math.random() < obsProb) spawnObstacle();
+		if (Math.random() < colProb) spawnCollectible();
+		if (Math.random() < powProb) spawnPowerup();
+		// small chance to spawn a charity: water jerry can (rare)
+		const jerryProb = (difficultyConfig && difficultyConfig.jerryProb) ? difficultyConfig.jerryProb : 0.06;
+		if (Math.random() < jerryProb) spawnJerry();
 		spawnTimer = 0;
+	}
+
+	// Update cloud positions for gentle parallax and wrap around edges
+	if (decorClouds && decorClouds.length) {
+		for (const c of decorClouds) {
+			// move horizontally based on speed and direction
+			c.x += c.dir * c.speed * dt;
+			// wrap so clouds loop across the scene
+			if (c.x < -120) c.x = canvas.width + 120;
+			if (c.x > canvas.width + 120) c.x = -120;
+		}
 	}
 
 	// Move obstacles / collectibles / powerups from right to left
@@ -247,13 +614,35 @@ function updateGame(dt) {
 
 			if (o.barrel && isFalling && playerPrevBottom <= obstacleTop + 6) {
 				// Stomp: remove barrel, award points, bounce player
-				obstacles.splice(i, 1);
-				score += 10;
+				// award stomp points scaled by difficulty
+				const stompPoints = Math.round(10 * ((difficultyConfig && difficultyConfig.scoreMultiplier) ? difficultyConfig.scoreMultiplier : 1));
+				// show popup at obstacle center
+				createPopup(`+${stompPoints}`, o.x + o.w/2, o.y + o.h/2, 'popup-stomp');
+				score += stompPoints;
 				scoreDisplay.textContent = `Score: ${score}`;
+				// check for impact milestones
+				checkImpactFacts();
+				// remove barrel after showing popup
+				obstacles.splice(i, 1);
 				// small bounce: set upward velocity (fraction of jumpPower)
 				player.vy = player.jumpPower * 0.6;
 				player.onGround = false;
+	                // play stomp SFX
+	                playSound('stomp');
 			} else {
+				// If it's a jerry can, award a random bonus instead of damaging the player
+                if (o.jerry) {
+					// remove jerry, award bonus
+					obstacles.splice(i, 1);
+					const bonus = applyJerryBonus();
+					// show popup near player
+					createPopup(bonus.label, player.x + player.width/2, player.y + player.height/2, 'popup-powerup');
+				// play a joyful sound for jerry bonus (powerup or collect)
+				if (bonus.key === 'score' || bonus.key === 'confetti') playSound('collect');
+				else playSound('powerup');
+					continue; // skip life loss logic
+				}
+
 				// existing behavior: filter power or take a life
 				if (activePower && activePower.type === 'filter') {
 					obstacles.splice(i, 1);
@@ -261,7 +650,10 @@ function updateGame(dt) {
 					obstacles.splice(i, 1);
 					lives--;
 					livesDisplay.textContent = `Lives: ${lives}`;
-					// audio removed: no warning sound played
+					// show negative-life popup near player
+					createPopup(`-1`, player.x + player.width/2, player.y + player.height/2, 'popup-hit');
+					// play hit sound
+					playSound('hit');
 					// End game when lives reach 0
 					if (lives <= 0) {
 						endGame();
@@ -276,10 +668,16 @@ function updateGame(dt) {
 	for (let i = collectibles.length - 1; i >= 0; i--) {
 		const c = collectibles[i];
 		if (isColliding(playerRect, { x: c.x, y: c.y, w: c.w, h: c.h })) {
+			const collectPoints = Math.round(10 * ((difficultyConfig && difficultyConfig.scoreMultiplier) ? difficultyConfig.scoreMultiplier : 1));
+			// show popup at collectible center
+			createPopup(`+${collectPoints}`, c.x + c.w/2, c.y + c.h/2, 'popup-collect');
 			collectibles.splice(i, 1);
-			score += 10;
+			score += collectPoints;
 			scoreDisplay.textContent = `Score: ${score}`;
-			// audio removed: no chime played
+			// check for impact milestones
+			checkImpactFacts();
+			// play collectible chime
+			playSound('collect');
 		}
 	}
 
@@ -287,7 +685,12 @@ function updateGame(dt) {
 	for (let i = powerups.length - 1; i >= 0; i--) {
 		const p = powerups[i];
 		if (isColliding(playerRect, { x: p.x, y: p.y, w: p.w, h: p.h })) {
+			// show popup naming the powerup (or +life for well)
+			if (p.type === 'well') createPopup('+1 Life', p.x + p.w/2, p.y + p.h/2, 'popup-powerup');
+			else createPopup(p.type.charAt(0).toUpperCase() + p.type.slice(1), p.x + p.w/2, p.y + p.h/2, 'popup-powerup');
 			powerups.splice(i, 1);
+			// play a powerup sound
+			playSound('powerup');
 			activatePowerup(p.type);
 		}
 	}
@@ -298,7 +701,9 @@ function updateGame(dt) {
 		if (activePower.timer <= 0) {
 			// deactivate effects
 			if (activePower.type === 'pump') {
-				gameSpeed = Math.max(140, gameSpeed - 60); // revert speed bump
+				// restore previous gameSpeed if stored, otherwise fallback
+				if (activePower.prevGameSpeed !== undefined) gameSpeed = activePower.prevGameSpeed;
+				else gameSpeed = Math.max(140, gameSpeed - 60);
 			}
 			activePower = null;
 			player.filterActive = false;
@@ -306,11 +711,15 @@ function updateGame(dt) {
 	}
 
 	// Score increments by time survived (1 point per second)
+	// award time-based score using difficulty multiplier
 	secondsCounter += dt;
 	if (secondsCounter >= 1) {
-		score += Math.floor(secondsCounter); // add whole seconds
+		const mult = (difficultyConfig && difficultyConfig.scoreMultiplier) ? difficultyConfig.scoreMultiplier : 1;
+		score += Math.floor(secondsCounter * mult); // add whole seconds scaled by multiplier
 		scoreDisplay.textContent = `Score: ${score}`;
 		secondsCounter = 0;
+		// check for impact milestones when time-based score increases
+		checkImpactFacts();
 	}
 
 	// Update highscore live display
@@ -374,6 +783,71 @@ function drawGame() {
 	for (let x = -bgOffset; x < canvas.width; x += 120) {
 		ctx.fillRect(x, canvas.height - 32, 60, 32);
 	}
+
+	// Draw decorative trees, grass and clouds (cartoon style)
+	function drawDecor() {
+		// Clouds (soft white puffs)
+		for (const c of decorClouds) {
+			const cx = c.x;
+			const cy = c.y;
+			const s = c.scale;
+			ctx.save();
+			ctx.translate(cx, cy);
+			ctx.scale(s, s);
+			// multiple overlapping ellipses for fluffy cloud
+			ctx.fillStyle = 'rgba(255,255,255,0.95)';
+			ctx.beginPath();
+			ctx.ellipse(-24, 4, 36, 28, 0, 0, Math.PI*2);
+			ctx.ellipse(0, -6, 48, 34, 0, 0, Math.PI*2);
+			ctx.ellipse(30, 6, 34, 26, 0, 0, Math.PI*2);
+			ctx.fill();
+			ctx.strokeStyle = 'rgba(4,34,60,0.06)';
+			ctx.lineWidth = 2;
+			ctx.stroke();
+			ctx.restore();
+		}
+
+		// Trees (simple trunk + round canopy)
+		for (const t of decorTrees) {
+			// compute a gentle sway offset using decorTime and per-tree phase/amplitude
+			const sway = Math.sin(decorTime + (t.phase || 0)) * (t.swayAmp || 3);
+			const tx = t.x + sway;
+			const baseY = t.baseY;
+			const size = t.size;
+			// trunk
+			ctx.fillStyle = '#8b5a3c';
+			roundRect(ctx, tx - size*0.08, baseY - size*0.5, size*0.16, size*0.5, 4);
+			ctx.fill();
+			// canopy: three overlapping circles
+			ctx.fillStyle = '#1DB07A';
+			ctx.beginPath();
+			ctx.ellipse(tx - size*0.18, baseY - size*0.48, size*0.36, size*0.28, 0, 0, Math.PI*2);
+			ctx.ellipse(tx + size*0.12, baseY - size*0.58, size*0.4, size*0.3, 0, 0, Math.PI*2);
+			ctx.ellipse(tx + size*0.4, baseY - size*0.36, size*0.28, size*0.22, 0, 0, Math.PI*2);
+			ctx.fill();
+			// light highlight
+			ctx.fillStyle = 'rgba(255,255,255,0.06)';
+			ctx.beginPath();
+			ctx.ellipse(tx - size*0.12, baseY - size*0.56, size*0.14, size*0.10, -0.35, 0, Math.PI*2);
+			ctx.fill();
+		}
+
+		// Grass (short blades along ground)
+		for (const g of decorGrass) {
+			const gx = g.x;
+			const gh = g.h;
+			const gy = canvas.height - 16; // position grass a bit above bottom
+			ctx.strokeStyle = '#118344';
+			ctx.lineWidth = 1.5;
+			ctx.beginPath();
+			ctx.moveTo(gx, gy);
+			ctx.quadraticCurveTo(gx + 2, gy - gh, gx + 4, gy);
+			ctx.stroke();
+		}
+	}
+
+	// call drawDecor to place trees/clouds/grass into the scene
+	drawDecor();
 
 	// Draw player as a teardrop water icon (bigger and visually clear)
 	ctx.save();
@@ -463,9 +937,55 @@ function drawGame() {
 			ctx.fill();
 		} else {
 			// ...existing code for non-barrel obstacles...
-			ctx.fillStyle = o.color;
-			roundRect(ctx, o.x, o.y, o.w, o.h, 4);
-			ctx.fill();
+			if (o.jerry) {
+				// draw charity: water jerry can — friendly, cartoon style
+				const jx = o.x, jy = o.y, jw = o.w, jh = o.h;
+				// prefer using the real image if it loaded
+				if (jerryImage && jerryImage.complete && jerryImage.naturalWidth) {
+					// draw while preserving aspect ratio so the can isn't squeezed
+					const imgW = jerryImage.naturalWidth;
+					const imgH = jerryImage.naturalHeight;
+					const imgAspect = imgW / imgH;
+					let drawW = jw;
+					let drawH = jh;
+					if (jw / jh > imgAspect) {
+						// available area is wider than image aspect -> limit by height
+						drawH = jh;
+						drawW = drawH * imgAspect;
+					} else {
+						// limit by width
+						drawW = jw;
+						drawH = drawW / imgAspect;
+					}
+					const drawX = jx + (jw - drawW) / 2;
+					const drawY = jy + (jh - drawH) / 2;
+					ctx.drawImage(jerryImage, drawX, drawY, drawW, drawH);
+				} else {
+					// canvas fallback: body
+					ctx.save();
+					ctx.fillStyle = '#FFD54F'; // warm yellow accent for brand can
+					roundRect(ctx, jx, jy, jw, jh, 6);
+					ctx.fill();
+					// handle (top-right)
+					ctx.fillStyle = '#e6bf3a';
+					ctx.beginPath();
+					ctx.ellipse(jx + jw - 6, jy + 6, 8, 6, 0, 0, Math.PI*2);
+					ctx.fill();
+					// drop logo (blue) on can
+					ctx.fillStyle = '#2E9DF7';
+					ctx.beginPath();
+					ctx.moveTo(jx + jw/2, jy + jh*0.25);
+					ctx.quadraticCurveTo(jx + jw*0.68, jy + jh*0.22, jx + jw*0.60, jy + jh*0.45);
+					ctx.quadraticCurveTo(jx + jw/2, jy + jh*0.66, jx + jw*0.40, jy + jh*0.45);
+					ctx.quadraticCurveTo(jx + jw*0.32, jy + jh*0.22, jx + jw/2, jy + jh*0.25);
+					ctx.fill();
+					ctx.restore();
+				}
+			} else {
+				ctx.fillStyle = o.color;
+				roundRect(ctx, o.x, o.y, o.w, o.h, 4);
+				ctx.fill();
+			}
 		}
 	});
 
@@ -720,9 +1240,11 @@ function activatePowerup(type) {
 		filterAura.opacity = 1.0;
 
 	} else if (type === 'pump') {
-		activePower = { type: 'pump', timer: 2.5 };
+		// store previous speed so we can restore it exactly
+		const prev = gameSpeed;
+		activePower = { type: 'pump', timer: 2.5, prevGameSpeed: prev };
 		// temporarily boost speed
-		gameSpeed += 60;
+		gameSpeed = prev + 60;
 
 		// create a short burst of speed lines around player
 		createSpeedLinesBurst(player.x + player.width / 2, player.y + player.height / 2);
@@ -790,12 +1312,54 @@ function createConfettiBurst(x, y) {
 	}
 }
 
+/* Choose and apply a random bonus when player hits a jerry can.
+   Returns an object with a `label` describing the bonus for popups. */
+function applyJerryBonus() {
+	const bonuses = ['life','score','filter','pump','confetti'];
+	const choice = bonuses[Math.floor(Math.random() * bonuses.length)];
+	switch (choice) {
+		case 'life': {
+			let lives = Number(livesDisplay.textContent.replace(/[^\d]/g, '')) || 3;
+			lives++;
+			livesDisplay.textContent = `Lives: ${lives}`;
+				playSound('powerup');
+			return { key: 'life', label: '+1 Life' };
+		}
+		case 'score': {
+			const pts = 50;
+			score += pts;
+			scoreDisplay.textContent = `Score: ${score}`;
+				playSound('collect');
+			return { key: 'score', label: `+${pts}` };
+		}
+		case 'filter': {
+			activatePowerup('filter');
+				playSound('powerup');
+			return { key: 'filter', label: 'Filter!' };
+		}
+		case 'pump': {
+			activatePowerup('pump');
+				playSound('powerup');
+			return { key: 'pump', label: 'Pump!' };
+		}
+		case 'confetti': {
+			const pts = 30;
+			score += pts;
+			scoreDisplay.textContent = `Score: ${score}`;
+			createConfettiBurst(player.x + player.width/2, player.y + player.height/2);
+				playSound('collect');
+			return { key: 'confetti', label: `+${pts}` };
+		}
+	}
+}
+
 /* End game: show game over screen and final stats */
 function endGame() {
 	running = false;
 	// set expression to mad so player shows angry face / posture
 	player.isMad = true;
-	// audio removed: no bgMusic.pause()
+	// stop and clear all audio (SFX + BGM) so audio does not continue after game over
+	stopAllAudio();
 	// briefly show the mad expression on canvas, then show game over screen
 	setTimeout(function() {
 		gameArea.classList.add('hidden');
@@ -832,6 +1396,8 @@ function jump() {
 	if (player.onGround) {
 		player.vy = player.jumpPower;
 		player.onGround = false;
+		// sound for jump
+		playSound('jump');
 	}
 }
 
@@ -873,6 +1439,8 @@ if (pauseBtn) {
 		// only allow pause when game is running
 		if (!running) return;
 		paused = !paused;
+		// click SFX
+		playSound('click');
 		pauseBtn.textContent = paused ? 'Resume' : 'Pause';
 		// resume: restart the loop with fresh timestamp
 		if (!paused) {
@@ -885,6 +1453,7 @@ if (pauseBtn) {
 // Reset button behavior
 if (resetBtn) {
 	resetBtn.addEventListener('click', () => {
+		playSound('click');
 		resetGame();
 	});
 }
@@ -901,19 +1470,25 @@ function showStartScreen() {
 }
 
 startBtn.addEventListener('click', () => {
+	// enable audio for this session if not muted and play UI click SFX
+	audioEnabled = !muted;
+	playSound('click');
 	startScreen.classList.add('hidden');
 	gameOverScreen.classList.add('hidden');
 	gameArea.classList.remove('hidden');
-	// set initial lives display
-	livesDisplay.textContent = `Lives: ${3}`;
+	// set initial lives display according to difficulty
+	livesDisplay.textContent = `Lives: ${difficultyConfig.lives}`;
 	initGame();
 });
 
 playAgainBtn.addEventListener('click', () => {
+	// enable audio (unless muted) and play click SFX when starting again
+	audioEnabled = !muted;
+	playSound('click');
 	gameOverScreen.classList.add('hidden');
 	startScreen.classList.add('hidden');
 	gameArea.classList.remove('hidden');
-	livesDisplay.textContent = `Lives: ${3}`;
+	livesDisplay.textContent = `Lives: ${difficultyConfig.lives}`;
 	initGame();
 });
 
@@ -924,6 +1499,57 @@ showStartScreen();
 window.addEventListener('resize', () => {
 	// If you want to adjust any scaling logic, do it here.
 });
+
+// Measure the site's footer height and write it to the CSS root variable
+// so the controls (TAP TO JUMP) can be positioned above it on small screens.
+// This keeps the UI from overlapping the footer even when the footer height
+// changes (responsive, i18n, or when buttons wrap).
+let __footerHeightTimer = null;
+function setFooterHeightCSS() {
+	try {
+		const footer = document.getElementById('site-footer');
+		if (!footer) return;
+		const h = Math.ceil(footer.getBoundingClientRect().height) || 64;
+		document.documentElement.style.setProperty('--footer-height', `${h}px`);
+	} catch (e) {
+		// ignore in environments where DOM measurement isn't available
+	}
+}
+
+// Debounced resize handler to avoid thrashing layout on rapid resizes
+window.addEventListener('resize', () => {
+	if (__footerHeightTimer) clearTimeout(__footerHeightTimer);
+	__footerHeightTimer = setTimeout(setFooterHeightCSS, 110);
+});
+
+// Ensure value is set on load (script is loaded at end of body, but this is defensive)
+document.addEventListener('DOMContentLoaded', setFooterHeightCSS);
+window.addEventListener('load', setFooterHeightCSS);
+// Also call shortly after script evaluation in case layout stabilizes right after load
+setTimeout(setFooterHeightCSS, 100);
+
+// Accessibility: ensure the instructions modal doesn't carry a static aria-hidden="true"
+// (some toolchains add it incorrectly). Prefer using the `inert` attribute on the
+// page content while the modal is open so assistive tech and focus are blocked
+// without setting aria-hidden on the modal itself.
+try {
+	const instrModal = document.getElementById('instructionsModal');
+	if (instrModal) {
+		// remove any lingering aria-hidden attribute that might conflict with focusable descendants
+		if (instrModal.getAttribute('aria-hidden') === 'true') instrModal.removeAttribute('aria-hidden');
+
+		instrModal.addEventListener('show.bs.modal', () => {
+			const area = document.getElementById('game-area');
+			if (area) area.setAttribute('inert', '');
+		});
+		instrModal.addEventListener('hidden.bs.modal', () => {
+			const area = document.getElementById('game-area');
+			if (area) area.removeAttribute('inert');
+		});
+	}
+} catch (e) {
+	// If Bootstrap events or inert are not available, silently continue.
+}
 
 /* ===========
    Asset loading (powerup images)
@@ -945,6 +1571,30 @@ Object.keys(powerupImages).forEach(key => {
 		console.warn(`Powerup image failed to load: img/${key[0].toUpperCase() + key.slice(1)}.PNG`);
 	};
 });
+
+// Load jerry can image (charity: water water-can); fallback drawing used when missing
+const jerryImage = new Image();
+jerryImage.src = 'img/water-can.png';
+jerryImage.onerror = function() {
+    console.warn('Jerry can image failed to load: img/water-can.png — falling back to canvas-drawn can');
+};
+
+/* =====================
+   Audio: SFX and BGM loader & player
+   Place audio files in `audio/` (mp3 or ogg). If files are missing the game will continue silently.
+   Expected filenames (examples):
+ 	 audio/jump.mp3         -> Jump splish/boing
+ 	 audio/collect.mp3      -> Collectible chime
+ 	 audio/hit.mp3          -> Obstacle hit (bonk)
+ 	 audio/powerup.mp3      -> Power-up activation (whoosh/fanfare)
+ 	 audio/stomp.mp3        -> Stomp on barrel
+ 	 audio/click.mp3        -> Button click
+ 	 audio/win.mp3          -> Win / game over flourish
+ 	 audio/bgm.mp3          -> Loopable background music (low volume)
+=======================*/
+
+// (Definitions hoisted earlier in the file to ensure handlers like jump() can call playSound())
+
 
 /* ======================
    Helpful comments / tips
